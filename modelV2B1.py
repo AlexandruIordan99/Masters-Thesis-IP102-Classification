@@ -3,33 +3,31 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import pathlib
 from keras import layers
 import tensorflow as tf
+from keras._tf_keras import keras
 from keras._tf_keras.keras.applications import EfficientNetV2B1
+
 import argparse
+import numpy as np
+from keras.src.callbacks import EarlyStopping
+from matplotlib import pyplot as plt
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
 
-
-
+# Paths to datasets
 path_to_train_set = pathlib.PosixPath(
-    "/home/jordan/Insect Pest Classification Dataset/classification/train")
-path_to_val_set = pathlib.PosixPath(
-    "/home/jordan/Insect Pest Classification Dataset/classification/val")
-path_to_test_set = pathlib.PosixPath(
-    "/home/jordan/Insect Pest Classification Dataset/classification/test")
-
-#Dataset with images converted to BGR
-path_to_train_setbgr = pathlib.PosixPath(
     "/home/jordan/Insect Pest Classification Dataset/classification/trainbgr")
-path_to_val_setbgr = pathlib.PosixPath(
+path_to_val_set = pathlib.PosixPath(
     "/home/jordan/Insect Pest Classification Dataset/classification/valbgr")
-path_to_test_setbgr = pathlib.PosixPath(
+path_to_test_set = pathlib.PosixPath(
     "/home/jordan/Insect Pest Classification Dataset/classification/testbgr")
 
-
-IMG_SIZE = 128
+IMG_SIZE = 240
 size = (IMG_SIZE, IMG_SIZE)
 BATCH_SIZE = 32
 NUM_CLASSES = 102
+epochs = 30
 
-
+# Dataset loading
 train_ds = tf.keras.utils.image_dataset_from_directory(
     path_to_train_set,
     label_mode="int",
@@ -51,82 +49,163 @@ test_ds = tf.keras.utils.image_dataset_from_directory(path_to_test_set,
                                                       image_size=size)
 
 
+mean_ImageNet= [0.485, 0.456, 0.406]
+st_dev_ImageNet= [0.229, 0.224, 0.225]
+
+
+
+# Image augmentation layers
 img_augmentation_layers = [
-    layers.Normalization(axis =-1, mean= [0.485, 0.456, 0.406], variance=[0.229, 0.224, 0.225]), #using ImageNet means
-    # and variance
     layers.RandomRotation(factor=0.15),
     layers.RandomTranslation(height_factor=0.1, width_factor=0.1),
     layers.RandomFlip(),
-    layers.RandomContrast(factor=0.1),
-    layers.RandomCrop(height=IMG_SIZE, width=IMG_SIZE),
-    layers.RandomBrightness(factor=0.1),
-    layers.RandomZoom(height_factor=0.1),
+    layers.RandomContrast(factor=0.2),  #removing it lower accuracy by 0.38%
+    # layers.RandomBrightness(factor=0.2)  lowers accuracy by 0.8%
 ]
 
 
 
+img_normalization_layers = [
+    layers.Normalization(axis=-1, mean=mean_ImageNet, variance=st_dev_ImageNet)]  # ImageNet means
+
+
+
+# Define the normalization parameters for ImageNet
+mean_imagenet = [0.485, 0.456, 0.406]  # Mean for R, G, B channels
+std_dev_imagenet = [0.229, 0.224, 0.225]  # Standard deviation for R, G, B channels
+
+
+
+# Normalization function
 def img_augmentation(images):
     for layer in img_augmentation_layers:
         images = layer(images)
     return images
 
 
-# One-hot / categorical encoding
+def img_normalization(images):
+    for layer in img_normalization_layers:
+        images = layer(images)
+    return images
+
+
+# Preprocessing functions for training and validation datasets
 def input_preprocess_train(image, label):
-    image = img_augmentation(image)
+    # image = normalize_image(image) #Normalize before augmentation
+    image = img_augmentation(image)  # Apply augmentation
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label
 
 
 def input_preprocess_val(image, label):
+    # image = normalize_image(image)  # Normalize only
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label
 
 
-# train_ds = train_ds.map(input_preprocess_train, num_parallel_calls=tf.data.AUTOTUNE)
-#
-# train_ds = train_ds.batch(batch_size=BATCH_SIZE,
-#                           drop_remainder=True,
-#                           num_parallel_calls=None,
-#                           deterministic=None,
-#                           name=None).unbatch()
+def input_preprocess_test(image, label):
+    # image = normalize_image(image)  # Normalize only
+    label = tf.one_hot(label, NUM_CLASSES)
+    return image, label
 
 
-model_V2B1 = EfficientNetV2B1(include_top=True,
-                              weights=None,
-                              classes = NUM_CLASSES,
-                              input_shape=(IMG_SIZE, IMG_SIZE, 3))
+# Apply preprocessing
+train_ds = train_ds.map(input_preprocess_train, num_parallel_calls=10)
+train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
 
-model_V2B1.compile(optimizer='adam',loss='sparse_categorical_crossentropy',metrics=['accuracy'])
-model_V2B1.summary()
+val_ds = val_ds.map(input_preprocess_val, num_parallel_calls=10)
+val_ds = val_ds.prefetch(tf.data.AUTOTUNE)  #CHECK FUNCTION CALL 25.10.2024
 
-epochs = 30
-
-
-def main():
-    global model_V2B1
-    global epochs
-    global train_ds
-    global val_ds
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model", help="Pass a trained model to skip training")
-    parser.add_argument("-s", "--save", help ="Saves a trained model")
-    args = parser.parse_args()
-
-    if args.model:
-        print(f"Loading {args.model}...")
-        model_V2B1.load_weights(args.model)
-        model_V2B1.compile(optimizer='adam',loss='sparse_categorical_crossentropy',metrics=['accuracy'])
-        history = model_V2B1.predict(train_ds, validation_data=test_ds, epochs=epochs)
-    else:
-        print(f"Training {args.save}...")
-        model_V2B1.compile(optimizer='adam',loss='sparse_categorical_crossentropy',metrics=['accuracy'])
-        hist_1= model_V2B1.fit(train_ds, epochs=epochs, validation_data=val_ds, batch_size= 64)
-
-    if args.save:
-        print(f"Saving {args.save}...")
-        model_V2B1.save_weights(args.save)
+test_ds = test_ds.map(input_preprocess_test, num_parallel_calls=10)
+test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
 
 
-main()
+#Transfer Learning from Pre-Trained Weights
+def build_model(num_classes):
+    inputs = layers.Input(shape=(IMG_SIZE, IMG_SIZE, 3))
+    model = EfficientNetV2B1(include_top=False, input_tensor=inputs, weights="imagenet")
 
+    # Freeze the pretrained weights
+    for layer in model.layers[:-15]:  # Freeze the first 20 layers
+        #changed this from -15 to -10
+        layer.trainable = False
+
+    # Rebuild top layers
+    x = layers.GlobalAveragePooling2D(name="avg_pool")(model.output)
+    x = layers.BatchNormalization()(x)
+    top_dropout_rate = 0.2
+    x = layers.Dropout(top_dropout_rate, name="top_dropout")(x)
+    outputs = layers.Dense(num_classes, activation="softmax", name="pred")(x)
+
+    # Compile
+    model = keras.Model(inputs, outputs, name="EfficientNet")
+    optimizer = keras.optimizers.Adam(learning_rate=0.01)
+    model.compile(
+        optimizer=optimizer,
+        loss="categorical_crossentropy",
+        metrics=[
+            "accuracy",
+            keras.metrics.AUC(name="auc"),
+            keras.metrics.Precision(name="precision"),
+            keras.metrics.Recall(name="recall")
+        ]
+    )
+    return model
+
+
+
+model = build_model(num_classes=NUM_CLASSES)
+
+
+def plot_hist(hist):
+    plt.plot(hist.history["accuracy"])
+    plt.plot(hist.history["val_accuracy"])
+    plt.title("model accuracy")
+    plt.ylabel("accuracy")
+    plt.xlabel("epoch")
+    plt.legend(["train", "validation"], loc="upper left")
+    plt.show()
+
+
+early_stop_callback = EarlyStopping(
+    monitor='val_accuracy',
+    patience=5,
+    restore_best_weights=True
+)
+
+
+epochs = 10  # @param {type: "slider", min:8, max:80}
+hist = model.fit(train_ds, epochs=epochs, validation_data=val_ds, callbacks= early_stop_callback)
+plot_hist(hist)
+
+
+def unfreeze_model(model):
+    # We unfreeze the top 10 layers while leaving BatchNorm layers frozen
+    for layer in model.layers[-15:]:  #changed this from -15 to -10
+        if not isinstance(layer, layers.BatchNormalization):
+            layer.trainable = True
+
+    optimizer = keras.optimizers.Adam(learning_rate=0.0001)
+    model.compile(
+        optimizer=optimizer,
+        loss="categorical_crossentropy",
+        metrics=["accuracy",
+                 keras.metrics.AUC(),
+                 keras.metrics.Precision(),
+                 keras.metrics.Recall()]
+    )
+
+
+unfreeze_model(model)
+
+
+epochs = 30  # @param {type: "slider", min:4, max:10}
+hist = model.fit(train_ds, epochs=epochs, validation_data=val_ds)
+plot_hist(hist)
+model.save_weights("/home/jordan/modelV2B1dataAug.weights.h5")
+model.evaluate(test_ds)
+model.load_weights("/home/jordan/modelV2B1dataAug.weights.h5")
+model.evaluate(test_ds)
+
+
+#Main function for training and saving the model
