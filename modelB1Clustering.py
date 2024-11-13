@@ -4,8 +4,9 @@ import numpy as np
 import tensorflow as tf
 from keras._tf_keras import keras
 from tensorflow.keras import layers, models
-from keras._tf_keras.keras.applications import EfficientNetB0
+from keras._tf_keras.keras.applications import EfficientNetB1
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import mixed_precision
 from keras._tf_keras.keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
@@ -27,8 +28,7 @@ if gpus:
         # Virtual devices must be set before GPUs have been initialized
         print(e)
 
-
-IMG_SIZE = 224
+IMG_SIZE = 240
 BATCH_SIZE = 16
 NUM_CLASSES = 102
 max_clusters = 6
@@ -64,7 +64,6 @@ img_augmentation_layers = [
     layers.RandomContrast(factor=0.2),
 ]
 
-
 # Data augmentation and normalization functions
 def img_augmentation(images):
     for layer in img_augmentation_layers:
@@ -92,35 +91,23 @@ val_ds = val_ds.prefetch(tf.data.AUTOTUNE)  #CHECK FUNCTION CALL 25.10.2024
 test_ds = test_ds.map(input_preprocess_val_and_test, num_parallel_calls=10)
 test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
 
-
-# Feature extractor model using EfficientNetB0
-base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+# Feature extractor model using EfficientNetB1
+base_model = EfficientNetB1(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
 x = layers.GlobalAveragePooling2D()(base_model.output)
 feature_extractor_model = models.Model(inputs=base_model.input, outputs=x)
 
 
-classifier_head = layers.Dense(NUM_CLASSES, activation='softmax')(x)
+mixed_precision.set_global_policy('mixed_float16') #using half precision variables to save memory and avoid OOM errors
+classifier_head = layers.Dense(NUM_CLASSES, activation='softmax', dtype ='float32')(x) #need to specify output data as float 32
 classifier_model = models.Model(inputs=base_model.input, outputs=classifier_head)
 classifier_model.compile(optimizer=Adam(learning_rate=1e-4),
                          loss='categorical_crossentropy',
                          metrics=['accuracy', keras.metrics.AUC(), keras.metrics.Precision(), keras.metrics.Recall()])
 
-
-
-
-
-
-
-
-
-
-
-
 # Adaptive clustering setup
 num_allowed_clusters = [1] * NUM_CLASSES
 flags = [0] * NUM_CLASSES
 
-print("Beginning Clustering Loop.")
 # Training loop with clustering and classifier training
 converged = False
 while not converged:
@@ -143,8 +130,8 @@ while not converged:
     train_dataset = tf.data.Dataset.from_tensor_slices((train_features, pseudo_labels)).batch(BATCH_SIZE)
 
     pca = PCA(n_components=64)
-    train_features = pca.fit_transform(train_features.numpy()) #reducing train dimensionality from 1280 to 256
-    #this should help save memory to avoid an OOM error
+    train_features = pca.fit_transform(train_features.numpy()) #reducing train dimensionality from 1280 to 48
+                                                               #this should help save memory to avoid an OOM error
 
     # Extract features for validation images without augmentation
     loop_counter = 0
@@ -178,6 +165,7 @@ while not converged:
     plt.title('Normalized Confusion Matrix')
     plt.show()
 
+
     # Adjust clusters based on confusion matrix
     for class_id in range(NUM_CLASSES):
         false_negatives = cm[class_id].sum() - cm[class_id][class_id]
@@ -203,7 +191,7 @@ while not converged:
 
     # Convert one-hot encoded `train_labels` back to class indices
     train_labels_indices = np.argmax(train_labels, axis=1) #reshaping array to match the shape
-    # of the cluster pseudo labels
+                                                           # of the cluster pseudo labels
 
     cluster_labels = np.full(train_labels_indices.shape, -1)
     for class_id, clusters in clusters_per_class.items():
@@ -213,9 +201,8 @@ while not converged:
         cluster_labels[class_indices] = clusters  # Assign directly as integers
 
     pseudo_labels = to_categorical(cluster_labels, num_classes=NUM_CLASSES)
-    print(f"Current num-allowed-clusters: {num_allowed_clusters}")
+    print(f"Current -allowed-clusters: {num_allowed_clusters}")
 
-    print("Checking Flag value, if flag is not 1, the loop restarts")
     if all(flag == 1 for flag in flags):
         print("Training completed with clustering and data augmentation.")
         print("Evaluating the model after clustering adjustments:")

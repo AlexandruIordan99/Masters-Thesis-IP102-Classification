@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from keras._tf_keras import keras
 from tensorflow.keras import layers, models
-from keras._tf_keras.keras.applications import EfficientNetB0
+from keras._tf_keras.keras.applications import EfficientNetV2B3
 from tensorflow.keras.optimizers import Adam
 from keras._tf_keras.keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
@@ -28,7 +28,7 @@ if gpus:
         print(e)
 
 
-IMG_SIZE = 224
+IMG_SIZE = 300
 BATCH_SIZE = 16
 NUM_CLASSES = 102
 max_clusters = 6
@@ -93,8 +93,8 @@ test_ds = test_ds.map(input_preprocess_val_and_test, num_parallel_calls=10)
 test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
 
 
-# Feature extractor model using EfficientNetB0
-base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+# Feature extractor model using EfficientNetV2B3
+base_model = EfficientNetV2B3(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
 x = layers.GlobalAveragePooling2D()(base_model.output)
 feature_extractor_model = models.Model(inputs=base_model.input, outputs=x)
 

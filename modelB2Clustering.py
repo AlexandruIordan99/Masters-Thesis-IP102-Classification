@@ -4,8 +4,9 @@ import numpy as np
 import tensorflow as tf
 from keras._tf_keras import keras
 from tensorflow.keras import layers, models
-from keras._tf_keras.keras.applications import EfficientNetB0
+from keras._tf_keras.keras.applications import EfficientNetB2
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import mixed_precision
 from keras._tf_keras.keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
@@ -13,26 +14,30 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from tensorflow.keras import mixed_precision
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    # Restrict TensorFlow to only allocate 8GB of memory on the first GPU
-    try:
-        tf.config.experimental.set_virtual_device_configuration(
-            gpus[0],
-            [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=8192)]) # Notice here
-        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-    except RuntimeError as e:
-        # Virtual devices must be set before GPUs have been initialized
-        print(e)
+# if gpus:
+#     # Restrict TensorFlow to only allocate 8GB of memory on the first GPU
+#     try:
+#         tf.config.experimental.set_virtual_device_configuration(
+#             gpus[0],
+#             [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=8192)]) # Notice here
+#         logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+#         print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+#     except RuntimeError as e:
+#         # Virtual devices must be set before GPUs have been initialized
+#         print(e)
+physical_devices = tf.config.list_physical_devices('GPU')
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-
-IMG_SIZE = 224
+IMG_SIZE = 260
 BATCH_SIZE = 16
 NUM_CLASSES = 102
 max_clusters = 6
 threshold = 0.2
+
+mixed_precision.set_global_policy('mixed_float16')
 
 # Paths to datasets
 path_to_train_set = pathlib.PosixPath(
@@ -64,7 +69,6 @@ img_augmentation_layers = [
     layers.RandomContrast(factor=0.2),
 ]
 
-
 # Data augmentation and normalization functions
 def img_augmentation(images):
     for layer in img_augmentation_layers:
@@ -92,35 +96,23 @@ val_ds = val_ds.prefetch(tf.data.AUTOTUNE)  #CHECK FUNCTION CALL 25.10.2024
 test_ds = test_ds.map(input_preprocess_val_and_test, num_parallel_calls=10)
 test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
 
-
-# Feature extractor model using EfficientNetB0
-base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
+# Feature extractor model using EfficientNetB2
+base_model = EfficientNetB2(weights='imagenet', include_top=False, input_shape=(IMG_SIZE, IMG_SIZE, 3))
 x = layers.GlobalAveragePooling2D()(base_model.output)
 feature_extractor_model = models.Model(inputs=base_model.input, outputs=x)
 
 
-classifier_head = layers.Dense(NUM_CLASSES, activation='softmax')(x)
+mixed_precision.set_global_policy('mixed_float16') #using half precision variables to save memory and avoid OOM errors
+classifier_head = layers.Dense(NUM_CLASSES, activation='softmax', dtype ='float32')(x) #need to specify output data as float 32
 classifier_model = models.Model(inputs=base_model.input, outputs=classifier_head)
 classifier_model.compile(optimizer=Adam(learning_rate=1e-4),
                          loss='categorical_crossentropy',
                          metrics=['accuracy', keras.metrics.AUC(), keras.metrics.Precision(), keras.metrics.Recall()])
 
-
-
-
-
-
-
-
-
-
-
-
 # Adaptive clustering setup
 num_allowed_clusters = [1] * NUM_CLASSES
 flags = [0] * NUM_CLASSES
 
-print("Beginning Clustering Loop.")
 # Training loop with clustering and classifier training
 converged = False
 while not converged:
@@ -140,11 +132,10 @@ while not converged:
     train_features = tf.concat(train_features, axis=0)
     train_labels = tf.concat(train_labels, axis=0)
     pseudo_labels = to_categorical(train_labels, NUM_CLASSES)
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_features, pseudo_labels)).batch(BATCH_SIZE)
 
-    pca = PCA(n_components=64)
-    train_features = pca.fit_transform(train_features.numpy()) #reducing train dimensionality from 1280 to 256
-    #this should help save memory to avoid an OOM error
+    pca = PCA(n_components=32)
+    train_features = pca.fit_transform(train_features.numpy()) #reducing train dimensionality from 1280 to 48
+                                                               #this should help save memory to avoid an OOM error
 
     # Extract features for validation images without augmentation
     loop_counter = 0
@@ -158,7 +149,6 @@ while not converged:
     val_features = tf.concat(val_features, axis=0)
     val_labels = tf.concat(val_labels, axis=0)
     val_pseudo_labels = to_categorical(val_labels, NUM_CLASSES)
-    val_dataset = tf.data.Dataset.from_tensor_slices((val_features, val_pseudo_labels)).batch(BATCH_SIZE)
 
     # Train the classifier model
     classifier_model.fit(train_ds, validation_data=val_ds, epochs=3)
@@ -177,6 +167,7 @@ while not converged:
     plt.xlabel('Predicted label')
     plt.title('Normalized Confusion Matrix')
     plt.show()
+
 
     # Adjust clusters based on confusion matrix
     for class_id in range(NUM_CLASSES):
@@ -203,7 +194,7 @@ while not converged:
 
     # Convert one-hot encoded `train_labels` back to class indices
     train_labels_indices = np.argmax(train_labels, axis=1) #reshaping array to match the shape
-    # of the cluster pseudo labels
+                                                           # of the cluster pseudo labels
 
     cluster_labels = np.full(train_labels_indices.shape, -1)
     for class_id, clusters in clusters_per_class.items():
@@ -213,9 +204,12 @@ while not converged:
         cluster_labels[class_indices] = clusters  # Assign directly as integers
 
     pseudo_labels = to_categorical(cluster_labels, num_classes=NUM_CLASSES)
-    print(f"Current num-allowed-clusters: {num_allowed_clusters}")
+    print(f"Current -allowed-clusters: {num_allowed_clusters}")
+    del train_features, val_features
+    tf.keras.backend.clear_session()
 
-    print("Checking Flag value, if flag is not 1, the loop restarts")
+
+
     if all(flag == 1 for flag in flags):
         print("Training completed with clustering and data augmentation.")
         print("Evaluating the model after clustering adjustments:")

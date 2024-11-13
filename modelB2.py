@@ -83,15 +83,9 @@ def img_augmentation(images):
     return images
 
 
-def img_normalization(images):
-    for layer in img_normalization_layers:
-        images = layer(images)
-    return images
-
 
 # Preprocessing functions for training and validation datasets
 def input_preprocess_train(image, label):
-    # image = normalize_image(image) #Normalize before augmentation
     image = img_augmentation(image)  # Apply augmentation
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label

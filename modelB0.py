@@ -74,8 +74,6 @@ img_normalization_layers = [
 mean_imagenet = [0.485, 0.456, 0.406]  # Mean for R, G, B channels
 std_dev_imagenet = [0.229, 0.224, 0.225]  # Standard deviation for R, G, B channels
 
-
-
 # Normalization function
 def img_augmentation(images):
     for layer in img_augmentation_layers:
@@ -91,20 +89,17 @@ def img_normalization(images):
 
 # Preprocessing functions for training and validation datasets
 def input_preprocess_train(image, label):
-    # image = normalize_image(image) #Normalize before augmentation
     image = img_augmentation(image)  # Apply augmentation
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label
 
 
 def input_preprocess_val(image, label):
-    # image = normalize_image(image)  # Normalize only
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label
 
 
 def input_preprocess_test(image, label):
-    # image = normalize_image(image)  # Normalize only
     label = tf.one_hot(label, NUM_CLASSES)
     return image, label
 
@@ -114,7 +109,7 @@ train_ds = train_ds.map(input_preprocess_train, num_parallel_calls=10)
 train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
 
 val_ds = val_ds.map(input_preprocess_val, num_parallel_calls=10)
-val_ds = val_ds.prefetch(tf.data.AUTOTUNE)  #CHECK FUNCTION CALL 25.10.2024
+val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
 
 test_ds = test_ds.map(input_preprocess_test, num_parallel_calls=10)
 test_ds = test_ds.prefetch(tf.data.AUTOTUNE)
@@ -197,7 +192,6 @@ def unfreeze_model(model):
 
 
 unfreeze_model(model)
-
 
 epochs = 30  # @param {type: "slider", min:4, max:10}
 hist = model.fit(train_ds, epochs=epochs, validation_data=val_ds)
