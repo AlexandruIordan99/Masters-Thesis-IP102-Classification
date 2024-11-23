@@ -4,6 +4,8 @@
 #         Joao Fonseca    <jpmrfonseca@gmail.com>
 # License: BSD 3 clause
 
+
+
 import math
 from collections import Counter
 from collections.abc import Callable
@@ -59,9 +61,9 @@ def make_geometric_sample(
 
     # Generate a point on the surface of a unit hyper-sphere
     radius = norm(center - surface_point)
-    normal_samples = random_state.normal(size=center.size)
+    normal_samples = random_state.normal(IMG_SIZE=center.IMG_SIZE)
     point_on_unit_sphere = normal_samples / norm(normal_samples)
-    point: NDArray = (random_state.uniform(size=1) ** (1 / center.size)) * point_on_unit_sphere
+    point: NDArray = (random_state.uniform(IMG_SIZE=1) ** (1 / center.IMG_SIZE)) * point_on_unit_sphere
 
     # Parallel unit vector
     parallel_unit_vector = (surface_point - center) / norm(surface_point - center)
@@ -287,7 +289,7 @@ class GeometricSMOTE(BaseOverSampler):
             self.categorical_features_,
         )
 
-        if self.categorical_features_.size == self.n_features_in_:
+        if self.categorical_features_.IMG_SIZE == self.n_features_in_:
             error_msg = (
                 'GeometricSMOTE is not designed to work only with categorical '
                 'features. It requires some numerical features.'
@@ -346,7 +348,7 @@ class GeometricSMOTE(BaseOverSampler):
             samples_indices = self.random_state_.randint(
                 low=0,
                 high=len(points_pos.flatten()),
-                size=n_samples,
+                IMG_SIZE=n_samples,
             )
             rows = np.floor_divide(samples_indices, points_pos.shape[1])
             cols = np.mod(samples_indices, points_pos.shape[1])
@@ -360,14 +362,14 @@ class GeometricSMOTE(BaseOverSampler):
                 samples_indices = self.random_state_.randint(
                     low=0,
                     high=len(points_neg.flatten()),
-                    size=n_samples,
+                    IMG_SIZE=n_samples,
                 )
                 rows = np.floor_divide(samples_indices, points_neg.shape[1])
                 cols = np.mod(samples_indices, points_neg.shape[1])
 
         # Case that the median std equals to zeros
         if self.categorical_features is not None and math.isclose(self.median_std_, 0):
-            X[:, self.continuous_features_.size :] = self.ohe_.transform(
+            X[:, self.continuous_features_.IMG_SIZE :] = self.ohe_.transform(
                 X_init[:, self.categorical_features_],
             ).toarray()
             X_pos = X[y == pos_class_label]
@@ -425,7 +427,7 @@ class GeometricSMOTE(BaseOverSampler):
     ) -> tuple[NDArray, NDArray]:
         """A support function that populates categorical features."""
         categories_size = (
-            [self.continuous_features_.size] + [cat.size for cat in self.ohe_.categories_]
+            [self.continuous_features_.IMG_SIZE] + [cat.IMG_SIZE for cat in self.ohe_.categories_]
             if self.categorical_features is not None
             else None
         )
@@ -470,7 +472,7 @@ class GeometricSMOTE(BaseOverSampler):
             return X_resampled.astype(X_init.dtype)
 
         if math.isclose(self.median_std_, 0):
-            X_resampled[: X_init.shape[0], self.continuous_features_.size :] = self.ohe_.transform(
+            X_resampled[: X_init.shape[0], self.continuous_features_.IMG_SIZE :] = self.ohe_.transform(
                 X_init[:, self.categorical_features_],
             ).toarray()
 
@@ -479,8 +481,8 @@ class GeometricSMOTE(BaseOverSampler):
         )
         X_resampled = np.hstack(
             (
-                X_resampled[:, : self.continuous_features_.size],
-                self.ohe_.inverse_transform(X_resampled[:, self.continuous_features_.size :]),
+                X_resampled[:, : self.continuous_features_.IMG_SIZE],
+                self.ohe_.inverse_transform(X_resampled[:, self.continuous_features_.IMG_SIZE :]),
             ),
         )[:, indices_reordered].astype(X_init.dtype)
         return X_resampled
