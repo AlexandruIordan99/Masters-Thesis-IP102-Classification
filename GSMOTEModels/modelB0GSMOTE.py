@@ -4,13 +4,12 @@ from keras import layers
 import tensorflow as tf
 from keras._tf_keras import keras
 from keras._tf_keras.keras.applications import EfficientNetB0
-import argparse
 import numpy as np
 from keras.src.callbacks import EarlyStopping
 from matplotlib import pyplot as plt
-from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from geometric_smote import GeometricSMOTE
+
 
 # Paths to datasets
 path_to_train_setbgr = pathlib.PosixPath(
@@ -19,6 +18,9 @@ path_to_val_setbgr = pathlib.PosixPath(
     "/home/jordan/Insect Pest Classification Dataset/classification/valbgr")
 path_to_test_setbgr = pathlib.PosixPath(
     "/home/jordan/Insect Pest Classification Dataset/classification/testbgr")
+
+
+
 IMG_SIZE = 224
 IMG_SIZE = (IMG_SIZE, IMG_SIZE)
 BATCH_SIZE = 32
@@ -89,7 +91,6 @@ def dataset_to_numpy_in_batches(dataset, batch_size):
 
 
 def batch_g_smote_resampling(dataset, batch_size):
-    """Apply G-SMOTE to dataset in smaller batches with safe k_neighbors adjustment."""
     X_resampled_list = []
     y_resampled_list = []
 
@@ -125,10 +126,12 @@ def batch_g_smote_resampling(dataset, batch_size):
         y_resampled_list.append(y_resampled_batch)
 
     # Concatenate all resampled batches
+
     X_resampled = np.concatenate(X_resampled_list, axis=0)
+    X_resampled_reshaped = X_resampled.reshape(X_resampled.shape[0], -1)
     y_resampled = np.concatenate(y_resampled_list, axis=0)
 
-    return X_resampled, y_resampled
+    return X_resampled_reshaped, y_resampled
 
 
 print("Dataset to numpy and resampling functions are defined....")
@@ -144,7 +147,7 @@ print("Scaler is loaded, scaling X_resampled and y_resampled and changing their 
 print(f"X_resampled is of type" + f"{type(X_resampled)}")
 print(f"y_resampled is of type" + f"{type(y_resampled)}")
 
-X_resampled = scaler.fit_transform(X_resampled.reshape(X_resampled.shape[0], -1)).reshape(X_resampled.shape)
+X_resampled = scaler.fit_transform(X_resampled)
 print("Scaling and reshaping successful.")
 
 print(f"X_resampled after scaling is of type {type(X_resampled)}")
@@ -187,7 +190,7 @@ def build_model(num_classes):
     model = EfficientNetB0(include_top=False, input_tensor=inputs, weights="imagenet")
 
     # Freeze the pretrained weights
-    for layer in model.layers[:-20]:  # Freeze the first 20 layers
+    for layer in model.layers[:-15]:  # Freeze the first 20 layers
         layer.trainable = False
 
     # Rebuild top layers
@@ -239,7 +242,7 @@ plot_hist(hist)
 
 def unfreeze_model(model):
     # We unfreeze the top 10 layers while leaving BatchNorm layers frozen
-    for layer in model.layers[-20:]:
+    for layer in model.layers[:-15]:
         if not isinstance(layer, layers.BatchNormalization):
             layer.trainable = True
 
@@ -259,32 +262,8 @@ unfreeze_model(model)
 epochs = 30  # @param {type: "slider", min:4, max:10}
 hist = model.fit(train_ds, epochs=epochs, validation_data=val_ds)
 plot_hist(hist)
-model.save_weights("/home/jordan/modelV1B0GSMOTE.weights.h5")
 model.evaluate(test_ds)
 
 
-# Main function for training and saving the model
-def main():
-    global model
-    epochs = 30
-    global train_ds
-    global val_ds
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model", help="Pass a trained model to skip training")
-    parser.add_argument("-s", "--save", help="Saves a trained model")
-    args = parser.parse_args()
-
-    if args.model:
-        print(f"Loading {args.model}...")
-        model.load_weights(args.model)
-        model.evaluate(test_ds)
-    else:
-        print(f"Training {args.save}...")
-        hist_1 = model.fit(train_ds, epochs=epochs, validation_data=val_ds)
-
-    if args.save:
-        print(f"Saving {args.save}...")
-        model.save_weights(args.save)
 
 
-main()

@@ -89,7 +89,6 @@ def dataset_to_numpy_in_batches(dataset, batch_size):
 
 
 def batch_g_smote_resampling(dataset, batch_size):
-    """Apply G-SMOTE to dataset in smaller batches with safe k_neighbors adjustment."""
     X_resampled_list = []
     y_resampled_list = []
 
@@ -238,7 +237,7 @@ plot_hist(hist)
 
 
 def unfreeze_model(model):
-    # We unfreeze the top 10 layers while leaving BatchNorm layers frozen
+    # We unfreeze the top 15 layers while leaving BatchNorm layers frozen
     for layer in model.layers[-15:]:
         if not isinstance(layer, layers.BatchNormalization):
             layer.trainable = True

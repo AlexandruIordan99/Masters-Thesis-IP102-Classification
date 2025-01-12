@@ -24,7 +24,7 @@ path_to_test_set = pathlib.PosixPath(
 
 IMG_SIZE = 380
 IMG_SIZE = (IMG_SIZE, IMG_SIZE)
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 NUM_CLASSES = 102
 epochs = 30
 
