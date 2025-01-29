@@ -1,3 +1,6 @@
+#G-SMOTE created by Douzas and Bacao (2019).
+#Documentation is however remvoed from readthedocs.io.
+
 from __future__ import absolute_import, division, print_function, unicode_literals
 import pathlib
 from keras import layers
