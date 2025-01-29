@@ -9,7 +9,6 @@ algorithm. These techniques are implemented using EfficientNet models across ver
 In the main folder, the Dataset_to_BGR lets users quickly change and save the IP102 dataset in a BGR format.
 The F1Calculator lets users calculate F1-Scores using the accuracy and recall metrics from the model evaluation
 output. Finally, geometric_smote is a local copy of the code from https://github.com/georgedouzas/imbalanced-learn-extra.
-This local copy was necessary because the geometric_smote import was not compatible with Python 3.12.6. The source
-is credited at the top of the file.
+This local copy was necessary because the geometric_smote import was not compatible with Python 3.12.6. 
 
 
