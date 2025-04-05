@@ -13,3 +13,19 @@ This local copy was necessary because the geometric_smote import was not compati
 at the top of that file.
 
 
+To run
+
+Use a Linux machine 
+
+Install up to date machine learning drivers from NVIDIA
+
+Prefferably use at least an NVIDIA RTX 4080 (10GB of RAM). Otherwise many of the models will stop working due to not enough VRAM.
+If you understandably do not own such an expensive graphics card, lower the batch size of the model. This will however lower its accuracy.
+
+Clone the repo
+
+Obtain the dataset from [its authors or from ](https://www.kaggle.com/datasets/rtlmhjbn/ip02-dataset). This is linked instead of the authors page because their google drive link is broken.
+
+Update the paths to the locations of your respective training, validation and testing sets.
+
+
