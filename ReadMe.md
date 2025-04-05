@@ -13,7 +13,7 @@ This local copy was necessary because the geometric_smote import was not compati
 at the top of that file.
 
 
-To run
+**To run:**
 
 Use a Linux machine 
 
